@@ -24,7 +24,6 @@ const auth = (): RequestHandler => {
       }
       // Extract the token
       const token = authHeader.split(" ")[1];
-
       if (!token) {
         throw new AppError(
           httpStatus.UNAUTHORIZED,
@@ -34,6 +33,7 @@ const auth = (): RequestHandler => {
       try {
         // Verify the Firebase token
         const decodedToken = await admin.auth().verifyIdToken(token);
+        console.log("decodedToken", decodedToken);
         // Check if user exists in database
         const user = await User.findOne({ uid: decodedToken.uid });
         if (!user) {

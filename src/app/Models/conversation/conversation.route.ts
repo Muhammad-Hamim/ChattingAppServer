@@ -20,7 +20,11 @@ router.patch(
   conversationController.respondToConversationRequest
 );
 
-router.get("/all", auth(), conversationController.getAllConversations);
+router.get(
+  "/all",
+  auth(),
+  conversationController.getAllConversations
+);
 router.get(
   "/:conversationId",
   auth(),

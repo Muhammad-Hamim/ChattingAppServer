@@ -1,12 +1,18 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/explicit-function-return-type */
 import { Schema, model } from "mongoose";
 import {
   ConversationModel,
   IConversation,
-  TParticipants,
+  TParticipant,
+  TUserConversationSettings,
+  TReadReceipt,
+  TBlockDetails,
+  TGroupSettings,
 } from "./conversation.interface";
 
 // Participant sub-schema
-const participantSchema = new Schema<TParticipants>(
+const participantSchema = new Schema<TParticipant>(
   {
     user_id: {
       type: Schema.Types.ObjectId,
@@ -15,7 +21,96 @@ const participantSchema = new Schema<TParticipants>(
     },
     role: {
       type: String,
-      enum: ["member", "admin", "initiator", "receiver"],
+      enum: ["member", "admin", "owner", "initiator", "receiver", "banned"],
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ["active", "left", "removed", "invited"],
+    },
+    nickname: {
+      type: String,
+      trim: true,
+    },
+    joinedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: false }
+);
+
+// User conversation settings sub-schema
+const userSettingsSchema = new Schema<TUserConversationSettings>(
+  {
+    user_id: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    is_archived: {
+      type: Boolean,
+      default: false,
+    },
+    is_muted: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  { _id: false }
+);
+
+// Read receipt sub-schema
+const readReceiptSchema = new Schema<TReadReceipt>(
+  {
+    user_id: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    last_read_timestamp: {
+      type: Date,
+      required: true,
+    },
+  },
+  { _id: false }
+);
+
+// Block details sub-schema for DM conversations
+const blockDetailsSchema = new Schema<TBlockDetails>(
+  {
+    is_blocked: {
+      type: Boolean,
+      required: true,
+      default: false,
+    },
+    blocked_by: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: false,
+    },
+    time: {
+      type: Date,
+      required: false,
+    },
+  },
+  { _id: false }
+);
+
+// Group settings sub-schema
+const groupSettingsSchema = new Schema<TGroupSettings>(
+  {
+    only_admin_can_post: {
+      type: Boolean,
+      default: false,
+    },
+    approval_required_to_join: {
+      type: Boolean,
+      default: false,
+    },
+    max_members: {
+      type: Number,
+      default: 256,
     },
   },
   { _id: false }
@@ -33,6 +128,15 @@ const groupDetailsSchema = new Schema(
     image: {
       type: String,
       trim: true,
+    },
+    description: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+    },
+    settings: {
+      type: groupSettingsSchema,
+      required: false,
     },
   },
   { _id: false }
@@ -56,24 +160,80 @@ const conversationSchema = new Schema<IConversation, ConversationModel>(
         message: "A conversation must have at least 2 participants",
       },
     },
-    status: {
+    last_message: {
+      type: Schema.Types.ObjectId,
+      ref: "Message",
+      required: false,
+    },
+    conversation_status: {
       type: String,
       enum: ["pending", "accepted", "rejected"],
-      // No default here - will be set in pre-save middleware based on type
+      required: true,
+      default: "pending",
     },
     initiated_by: {
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-    last_message: {
+    initiated_at: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+    responded_by: {
       type: Schema.Types.ObjectId,
-      ref: "Message", // Reference to Message collection
+      ref: "User",
       required: false,
     },
+    response_action: {
+      type: String,
+      enum: ["accepted", "rejected"],
+      required: false,
+    },
+    response_time: {
+      type: Date,
+      required: false,
+    },
+    read_receipts: {
+      type: [readReceiptSchema],
+      required: false,
+      default: [],
+    },
+    user_settings: {
+      type: [userSettingsSchema],
+      required: false,
+      default: [],
+    },
+    message_ttl: {
+      type: Number,
+      required: false,
+    },
+    // DM specific fields
+    receiver_id: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: function () {
+        return this.type === "DM";
+      },
+    },
+    initiator_id: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: function () {
+        return this.type === "DM";
+      },
+    },
+    block_details: {
+      type: blockDetailsSchema,
+      required: false,
+    },
+    // Group specific fields
     group_details: {
       type: groupDetailsSchema,
-      required: false,
+      required: function () {
+        return this.type === "GROUP";
+      },
     },
   },
   {
@@ -84,15 +244,20 @@ const conversationSchema = new Schema<IConversation, ConversationModel>(
 // Indexes for better performance
 conversationSchema.index({ "participants.user_id": 1 });
 conversationSchema.index({ type: 1 });
+conversationSchema.index({ "read_receipts.user_id": 1 });
+conversationSchema.index({ conversation_status: 1 });
+conversationSchema.index({ initiated_by: 1 });
+conversationSchema.index({ receiver_id: 1 });
+conversationSchema.index({ initiator_id: 1 });
 
 // Pre-save middleware for validation
 conversationSchema.pre("save", function (next) {
-  // Set status based on conversation type (only for new documents)
-  if (this.isNew && !this.status) {
+  // Set conversation_status based on conversation type (only for new documents)
+  if (this.isNew && !this.conversation_status) {
     if (this.type === "DM") {
-      this.status = "pending";
+      this.conversation_status = "pending";
     } else if (this.type === "GROUP") {
-      this.status = "accepted";
+      this.conversation_status = "accepted";
     }
   }
 
@@ -130,25 +295,6 @@ conversationSchema.statics.findByParticipants = function (userIds: string[]) {
   });
 };
 
-// Get all conversations for a user with populated details, sorted by recent activity
-conversationSchema.statics.findUserConversations = function (
-  userId: string | any
-) {
-  return this.find({
-    "participants.user_id": userId,
-  })
-    .populate("participants.user_id", "name email uid")
-    .populate("initiated_by", "name email uid") // Populate who initiated the conversation
-    .populate({
-      path: "last_message",
-      populate: {
-        path: "sender_id",
-        select: "name email uid",
-      },
-    })
-    .sort({ updatedAt: -1 });
-};
-
 // Check if a DM conversation already exists between two specific users
 conversationSchema.statics.findDMBetweenUsers = function (
   userId1: string | any,
@@ -173,7 +319,7 @@ conversationSchema.statics.findConversationsInitiatedBy = function (
     .populate({
       path: "last_message",
       populate: {
-        path: "sender_id",
+        path: "sender",
         select: "name email uid",
       },
     })
@@ -183,14 +329,13 @@ conversationSchema.statics.findConversationsInitiatedBy = function (
 // Instance methods
 conversationSchema.methods.addParticipant = function (
   userId: string,
+  conversationId: string,
   role: "member" | "admin" = "member"
 ) {
   // check if conversation is DM
   if (this.type === "DM") {
     // DM conversations can only have 2 participants
-    if (this.participants.length <= 2) {
-      throw new Error("DM conversations can only have 2 participants");
-    }
+    throw new Error("DM conversations can only have 2 participants");
   }
 
   const isAlreadyParticipant = this.participants.some(
@@ -201,6 +346,8 @@ conversationSchema.methods.addParticipant = function (
     this.participants.push({
       user_id: userId,
       role: role,
+      status: "active",
+      joinedAt: new Date(),
     });
   }
 
@@ -216,8 +363,9 @@ conversationSchema.methods.removeParticipant = function (userId: string) {
 };
 
 conversationSchema.methods.updateLastMessage = function (messageId: string) {
-  this.last_message = messageId; // Store ObjectId reference to Message document
-  return this.save();
+  this.last_message = messageId;
+  // Use validateModifiedOnly to avoid re-validating required fields that weren't changed
+  return this.save({ validateModifiedOnly: true });
 };
 
 conversationSchema.methods.isParticipant = function (userId: string) {
@@ -237,6 +385,122 @@ conversationSchema.methods.getParticipantRole = function (userId: string) {
     return participantId.toString() === userId.toString();
   });
   return participant?.role || null;
+};
+
+// Methods for handling response history and status transitions
+conversationSchema.methods.acceptConversation = function (userId: string) {
+  // Check if user can accept (status must be pending or rejected)
+  if (this.conversation_status === "accepted") {
+    throw new Error("Conversation is already accepted");
+  }
+
+  // Set response fields
+  this.responded_by = userId;
+  this.response_action = "accepted";
+  this.response_time = new Date();
+
+  // Update status
+  this.conversation_status = "accepted";
+  return this.save();
+};
+
+conversationSchema.methods.rejectConversation = function (userId: string) {
+  // Check if user can reject (status must be pending or accepted)
+  if (this.conversation_status === "rejected") {
+    throw new Error("Conversation is already rejected");
+  }
+
+  // Set response fields
+  this.responded_by = userId;
+  this.response_action = "rejected";
+  this.response_time = new Date();
+
+  // Update status
+  this.conversation_status = "rejected";
+  return this.save();
+};
+
+conversationSchema.methods.canAccept = function () {
+  // User can accept if status is pending or rejected
+  return (
+    this.conversation_status === "pending" ||
+    this.conversation_status === "rejected"
+  );
+};
+
+conversationSchema.methods.canReject = function () {
+  // User can reject if status is pending or accepted
+  return (
+    this.conversation_status === "pending" ||
+    this.conversation_status === "accepted"
+  );
+};
+
+// Methods for handling blocked details in DM conversations
+conversationSchema.methods.blockConversation = function (blockedBy: string) {
+  if (this.type !== "DM") {
+    throw new Error("Only DM conversations can be blocked");
+  }
+
+  this.block_details = {
+    is_blocked: true,
+    blocked_by: blockedBy,
+    time: new Date(),
+  };
+
+  return this.save();
+};
+
+conversationSchema.methods.unblockConversation = function () {
+  if (this.type !== "DM") {
+    throw new Error("Only DM conversations can be unblocked");
+  }
+
+  this.block_details = {
+    is_blocked: false,
+    time: new Date(),
+  };
+
+  return this.save();
+};
+
+conversationSchema.methods.isBlocked = function () {
+  return this.block_details?.is_blocked === true;
+}; // Methods for handling read receipts
+conversationSchema.methods.markAsRead = function (userId: string) {
+  const existingIndex = this.read_receipts.findIndex(
+    (rs: any) => rs.user_id.toString() === userId.toString()
+  );
+
+  if (existingIndex >= 0) {
+    // Update existing read receipt
+    this.read_receipts[existingIndex].last_read_timestamp = new Date();
+  } else {
+    // Add new read receipt
+    this.read_receipts.push({
+      user_id: userId,
+      last_read_timestamp: new Date(),
+    });
+  }
+
+  return this.save();
+};
+
+conversationSchema.methods.getLastReadTimestamp = function (userId: string) {
+  const readReceipt = this.read_receipts.find(
+    (rs: any) => rs.user_id.toString() === userId.toString()
+  );
+  return readReceipt?.last_read_timestamp || null;
+};
+
+conversationSchema.methods.hasUnreadMessages = function (userId: string) {
+  if (!this.last_message) return false;
+
+  const lastReadTimestamp = this.getLastReadTimestamp(userId);
+  if (!lastReadTimestamp) return true; // Never read
+
+  // Compare with last message timestamp (assuming last_message has createdAt)
+  return this.updatedAt > lastReadTimestamp;
 };
 
 // Create the base model

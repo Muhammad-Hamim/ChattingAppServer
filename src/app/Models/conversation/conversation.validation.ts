@@ -18,7 +18,6 @@ const createDMCRvalidation = z.object({
 const respondToConversationRequestSchema = z.object({
   body: z.object({
     action: z.enum(["accepted", "rejected"]),
-    respondingUserId: z.string().min(1, "Responding user ID is required"),
   }),
 });
 
