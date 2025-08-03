@@ -1,16 +1,36 @@
-import mongoose from 'mongoose';
-import app from './app';
-import config from './app/config';
-import { Server } from 'http';
+import mongoose from "mongoose";
+import { io, server } from "./app";
+import config from "./app/config";
+import { socketAuth } from "./app/middlewares/socketAuth";
+import { AuthenticatedSocket } from "./types/TSocket";
 
-let server: Server;
 async function main() {
   try {
     await mongoose.connect(config.database_url as string);
-    server = app.listen(config.port, () => {
+    server.listen(config.port, () => {
       console.log(`app is listening on port ${config.port}`);
     });
-    
+
+    // Add authentication middleware
+    io.use(socketAuth);
+
+    io.on("connection", (socket) => {
+      const authSocket = socket as AuthenticatedSocket;
+      console.log(
+        `✅ New client connected: ${authSocket.name} (${authSocket.email}) - Socket ID: ${authSocket.socketId}`
+      );
+      // Send welcome message
+      socket.emit("welcome", {
+        message: "Connected successfully!",
+        socketId: socket.id,
+      });
+
+      socket.on("disconnect", (reason) => {
+        console.log(
+          `❌ Client disconnected: ${authSocket.name} (${authSocket.email}) - Reason: ${reason}`
+        );
+      });
+    });
   } catch (err) {
     console.log(err);
   }
@@ -18,7 +38,7 @@ async function main() {
 
 main();
 
-process.on('unhandledRejection', () => {
+process.on("unhandledRejection", () => {
   if (server) {
     server.close(() => {
       process.exit(1);
@@ -27,6 +47,6 @@ process.on('unhandledRejection', () => {
   process.exit(1);
 });
 
-process.on('uncaughtException', () => {
+process.on("uncaughtException", () => {
   process.exit(1);
 });

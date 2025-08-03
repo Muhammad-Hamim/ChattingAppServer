@@ -141,6 +141,24 @@ const getAllConversationService = async ({
         as: "participantUsers",
       },
     },
+    //populate last message
+    {
+      $lookup: {
+        from: "messages",
+        localField: "last_message",
+        foreignField: "_id",
+        as: "lastMessage",
+      },
+    },
+    // Populate sender information for last message
+    {
+      $lookup: {
+        from: "users",
+        localField: "lastMessage.sender",
+        foreignField: "_id",
+        as: "lastMessageSender",
+      },
+    },
     // Add computed fields based on conversation type
     {
       $addFields: {
@@ -177,6 +195,31 @@ const getAllConversationService = async ({
             },
           },
         },
+        // Format last message with only required fields
+        formattedLastMessage: {
+          $cond: {
+            if: { $gt: [{ $size: "$lastMessage" }, 0] },
+            then: {
+              sender_name: {
+                $arrayElemAt: ["$lastMessageSender.name", 0],
+              },
+              sender_email: {
+                $arrayElemAt: ["$lastMessageSender.email", 0],
+              },
+              type: {
+                $arrayElemAt: ["$lastMessage.type", 0],
+              },
+              content: {
+                $arrayElemAt: ["$lastMessage.content", 0],
+              },
+
+              updatedAt: {
+                $arrayElemAt: ["$lastMessage.updatedAt", 0],
+              },
+            },
+            else: null,
+          },
+        },
       },
     },
     // Project only the required fields
@@ -187,7 +230,7 @@ const getAllConversationService = async ({
         participants: "$displayInfo",
         block_details: 1,
         conversation_status: 1,
-        last_message: 1,
+        last_message: "$formattedLastMessage",
         createdAt: 1,
         updatedAt: 1,
       },
@@ -243,6 +286,25 @@ const getConversationByIdService = async ({
       },
     },
 
+    // Populate last message
+    {
+      $lookup: {
+        from: "messages",
+        localField: "last_message",
+        foreignField: "_id",
+        as: "lastMessage",
+      },
+    },
+    // Populate sender information for last message
+    {
+      $lookup: {
+        from: "users",
+        localField: "lastMessage.sender",
+        foreignField: "_id",
+        as: "lastMessageSender",
+      },
+    },
+
     // Add computed fields based on conversation type
     {
       $addFields: {
@@ -279,6 +341,24 @@ const getConversationByIdService = async ({
             },
           },
         },
+        // Format last message with only required fields
+        formattedLastMessage: {
+          $cond: {
+            if: { $gt: [{ $size: "$lastMessage" }, 0] },
+            then: {
+              sender_name: {
+                $arrayElemAt: ["$lastMessageSender.name", 0],
+              },
+              content: {
+                $arrayElemAt: ["$lastMessage.content", 0],
+              },
+              updatedAt: {
+                $arrayElemAt: ["$lastMessage.updatedAt", 0],
+              },
+            },
+            else: null,
+          },
+        },
       },
     },
 
@@ -292,7 +372,7 @@ const getConversationByIdService = async ({
         block_details: 1,
         group_details: 1,
         read_receipts: 1,
-        last_message: 1,
+        last_message: "$formattedLastMessage",
         initiated_by: 1,
         initiated_at: 1,
         responded_by: 1,
