@@ -36,8 +36,8 @@ const messageSchema = new Schema<TMessage, MessageModel>(
     },
     status: {
       type: String,
-      enum: ["pending", "sent", "delivered"],
-      default: "pending",
+      enum: ["sent", "delivered", "read"],
+      default: "sent",
       required: true,
     },
     edited: {

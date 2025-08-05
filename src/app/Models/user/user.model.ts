@@ -22,12 +22,19 @@ const userSchema = new Schema<TUser>(
     lastLogin: {
       type: Date,
     },
+    status: {
+      type: String,
+      enum: ["online", "offline"],
+      default: "offline",
+    },
+    lastSeen: {
+      type: Date,
+      default: Date.now,
+    },
   },
   {
     timestamps: true,
   }
 );
-
-
 
 export const User = model<TUser>("User", userSchema);

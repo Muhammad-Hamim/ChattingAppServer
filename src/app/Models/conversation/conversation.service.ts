@@ -115,14 +115,14 @@ const respondToConversationRequestService = async ({
 };
 
 const getAllConversationService = async ({
-  userId,
+  user_id,
   query,
 }: {
-  userId: string;
+  user_id: string;
   query: Record<string, unknown>;
 }) => {
   // Convert userId to ObjectId for proper matching
-  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const userObjectId = new mongoose.Types.ObjectId(user_id);
 
   // Custom aggregation pipeline for conversation list
   const aggregationPipeline = [
@@ -255,14 +255,14 @@ const getAllConversationService = async ({
 
 // get specific conversation by ID
 const getConversationByIdService = async ({
-  userId,
+  user_id,
   conversationId,
 }: {
-  userId: string;
+  user_id: string;
   conversationId: string;
 }) => {
   // Convert userId to ObjectId for proper matching
-  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const userObjectId = new mongoose.Types.ObjectId(user_id);
 
   // Custom aggregation pipeline for specific conversation
   const aggregationPipeline = [
@@ -331,6 +331,8 @@ const getConversationByIdService = async ({
                   name: "$$otherParticipant.name",
                   email: "$$otherParticipant.email",
                   uid: "$$otherParticipant.uid",
+                  status: "$$otherParticipant.status",
+                  lastSeen: "$$otherParticipant.lastSeen",
                 },
               },
             },

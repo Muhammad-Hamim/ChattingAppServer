@@ -5,4 +5,4 @@ dist
 .env.*
 *.env
 .vercel
- firebase_service_account_credential.json
+firebase_service_account_credential.json

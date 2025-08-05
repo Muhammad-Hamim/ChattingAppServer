@@ -38,7 +38,7 @@ const respondToConversationRequest = catchAsync(async (req, res) => {
 
 const getAllConversations = catchAsync(async (req, res) => {
   const result = await ConversationService.getAllConversationService({
-    userId: req.user._id as string, // Use MongoDB _id
+    user_id: req.user._id as string, // Use MongoDB _id
     query: req.query,
   });
   sendResponse(res, {
@@ -54,7 +54,7 @@ const getConversationById = catchAsync(async (req, res) => {
 
   const result = await ConversationService.getConversationByIdService({
     conversationId,
-    userId: req.user._id as string, // Use MongoDB _id
+    user_id: req.user._id as string, // Use MongoDB _id
   });
 
   sendResponse(res, {

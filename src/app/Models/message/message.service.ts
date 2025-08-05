@@ -5,6 +5,7 @@ import Message from "./message.model";
 import httpStatus from "http-status";
 import { TMessageType } from "./message.interface";
 import QueryBuilder from "../../builder/QuiryBuilder";
+import { conversationMessageAggregation } from "./messages.aggregation";
 
 const getConversationMessagesService = async ({
   conversationId,
@@ -14,10 +15,7 @@ const getConversationMessagesService = async ({
   conversationId: string;
   userId: string;
   query: Record<string, unknown>;
-}): Promise<{
-  messages: unknown[];
-  totalCount: number;
-}> => {
+}): Promise<unknown[]> => {
   // Check if conversationId exists
   const conversation = await Conversation.findById(conversationId);
   if (!conversation) {
@@ -38,182 +36,21 @@ const getConversationMessagesService = async ({
   const conversationObjectId = new mongoose.Types.ObjectId(conversationId);
   const userObjectId = new mongoose.Types.ObjectId(userId);
 
-  // Build aggregation pipeline (business logic only, no pagination/sorting)
-  const aggregationPipeline: mongoose.PipelineStage[] = [
-    // Match messages for this specific conversation
-    {
-      $match: {
-        conversation_id: conversationObjectId,
-      },
-    },
-    // Add logic to check deletion status based on deleted_history
-    {
-      $addFields: {
-        // Check if message is deleted for everyone
-        deletedForEveryone: {
-          $cond: {
-            if: {
-              $anyElementTrue: {
-                $map: {
-                  input: { $ifNull: ["$deleted_history", []] },
-                  as: "deletion",
-                  in: { $eq: ["$$deletion.deleted_for", "everyone"] },
-                },
-              },
-            },
-            then: true,
-            else: false,
-          },
-        },
-        // Determine if message should be hidden completely
-        shouldHideMessage: {
-          $cond: {
-            if: {
-              $anyElementTrue: {
-                $map: {
-                  input: { $ifNull: ["$deleted_history", []] },
-                  as: "deletion",
-                  in: {
-                    $and: [
-                      { $eq: ["$$deletion.deleted_for", "me"] },
-                      { $eq: ["$$deletion.user_id", userObjectId] },
-                    ],
-                  },
-                },
-              },
-            },
-            then: true,
-            else: false,
-          },
-        },
-      },
-    },
-    // Filter out messages that are deleted for current user only
-    {
-      $match: {
-        shouldHideMessage: false,
-      },
-    },
-    // Populate sender information
-    {
-      $lookup: {
-        from: "users",
-        localField: "sender",
-        foreignField: "_id",
-        as: "sender",
-      },
-    },
-    {
-      $unwind: "$sender",
-    },
-    // Populate reply_to information
-    {
-      $lookup: {
-        from: "messages",
-        localField: "reply_to",
-        foreignField: "_id",
-        as: "reply_to_info",
-      },
-    },
-    // Populate reactions user info
-    {
-      $lookup: {
-        from: "users",
-        localField: "reactions.user_id",
-        foreignField: "_id",
-        as: "reaction_users",
-      },
-    },
-    // Add content display logic
-    {
-      $addFields: {
-        displayContent: {
-          $cond: {
-            if: "$deletedForEveryone",
-            then: "This message was deleted",
-            else: "$content",
-          },
-        },
-        canDeleteForEveryone: {
-          $cond: {
-            if: { $eq: ["$sender._id", userObjectId] },
-            then: {
-              // Check if message is within 10 minutes (600000 milliseconds)
-              $lt: [{ $subtract: [new Date(), "$createdAt"] }, 600000],
-            },
-            else: false,
-          },
-        },
-        canDeleteForMe: true,
-        reply_to: {
-          $cond: {
-            if: { $gt: [{ $size: "$reply_to_info" }, 0] },
-            then: { $arrayElemAt: ["$reply_to_info", 0] },
-            else: null,
-          },
-        },
-        // Map reactions with user info
-        reactions: {
-          $map: {
-            input: "$reactions",
-            as: "reaction",
-            in: {
-              emoji: "$$reaction.emoji",
-              reacted_at: "$$reaction.reacted_at",
-              user: {
-                $arrayElemAt: [
-                  {
-                    $filter: {
-                      input: "$reaction_users",
-                      cond: { $eq: ["$$this._id", "$$reaction.user_id"] },
-                    },
-                  },
-                  0,
-                ],
-              },
-            },
-          },
-        },
-      },
-    },
-    // Clean up temporary fields
-    {
-      $project: {
-        shouldHideMessage: 0,
-        reply_to_info: 0,
-        reaction_users: 0,
-        deletedForEveryone: 0,
-      },
-    },
-  ];
+  //get the aggregation pipeline
+  const pipeline = conversationMessageAggregation({
+    conversationObjectId,
+    userObjectId,
+  });
+  //message base query
+  const messageQuery = Message.aggregate(pipeline as mongoose.PipelineStage[]);
+  // Apply query builder if query is provided
+  const messages = await new QueryBuilder(messageQuery, query, "aggregate")
+    .sort()
+    .paginate()
+    .search(["content"])
+    .execute();
 
-  // Create base aggregation query
-  const baseQuery = Message.aggregate(aggregationPipeline);
-
-  // Use QueryBuilder to handle sorting, pagination, filtering and search
-  const messageQuery = new QueryBuilder(baseQuery, query, "aggregate")
-    .filter() // Apply any additional filters from query params
-    .search(["content"]) // Enable search on message content
-    .sort() // Handle sorting (defaults to -createdAt)
-    .paginate(); // Handle pagination
-
-  // Execute the query
-  const messages = await messageQuery.execute();
-
-  // Get total count for pagination (separate query without pagination)
-  const countPipeline = aggregationPipeline.slice(0, 3); // Only match stages for counting
-  const totalCountResult = await Message.aggregate([
-    ...countPipeline,
-    { $count: "count" },
-  ]);
-
-  const totalCount =
-    totalCountResult.length > 0 ? totalCountResult[0].count : 0;
-
-  return {
-    messages: messages || [],
-    totalCount,
-  };
+  return messages || [];
 };
 
 const sendMessageService = async ({
@@ -313,10 +150,17 @@ const sendMessageService = async ({
     );
   }
 
-  // Populate sender info before returning
-  await message.populate("sender", "name email uid");
+  // Populate sender info and reply_to before returning with all required fields
+  await message.populate("sender", "_id uid name email");
   if (replyTo) {
-    await message.populate("reply_to", "content type sender");
+    await message.populate({
+      path: "reply_to",
+      select: "_id content type sender createdAt",
+      populate: {
+        path: "sender",
+        select: "_id uid name email",
+      },
+    });
   }
 
   return message;

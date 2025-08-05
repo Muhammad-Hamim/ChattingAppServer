@@ -2,6 +2,7 @@ import { Socket } from "socket.io";
 import admin from "firebase-admin";
 import mongoose from "mongoose";
 import { User } from "../Models";
+import { UserService } from "../Models/user/user.service";
 import { AuthenticatedSocket } from "../../types/TSocket";
 
 export const socketAuth = async (
@@ -11,10 +12,10 @@ export const socketAuth = async (
   try {
     console.log("🔐 Socket authentication attempt:", socket.id);
 
-    const { token, uid } = socket.handshake.auth;
+    const { token } = socket.handshake.auth;
 
     // Quick validation first
-    if (!token || !uid) {
+    if (!token) {
       console.log("❌ Missing auth data");
       return next(new Error("Missing authentication data"));
     }
@@ -39,7 +40,9 @@ export const socketAuth = async (
     authSocket.email = user.email;
     authSocket.name = user.name;
     authSocket.socketId = socket.id;
-    authSocket.socketId = socket.id;
+
+    // Update user status to online and lastLogin when socket connects
+    await UserService.updateUserStatus(user._id.toString(), "online");
 
     console.log("✅ Socket authenticated:", authSocket.name);
     next();

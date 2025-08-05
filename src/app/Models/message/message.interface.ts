@@ -2,10 +2,17 @@ import { Document, Model, PopulatedDoc } from "mongoose";
 import { TUser } from "../user/user.interface";
 import { IConversation } from "../conversation/conversation.interface";
 
-export type TMessageType = "text" | "image" | "video" | "audio" | "file" | "system" | "location";
+export type TMessageType =
+  | "text"
+  | "image"
+  | "video"
+  | "audio"
+  | "file"
+  | "system"
+  | "location";
 
 /** Delivery status of the message */
-export type TMessageStatus = "pending" | "sent" | "delivered";
+export type TMessageStatus = "sent" | "delivered" | "read";
 
 /** Soft delete tracking per user or for all */
 export type TMessageDeleteRecord = {
@@ -70,7 +77,8 @@ export interface TMessage extends Document {
 
   /** Soft delete record */
   deleted_history?: TMessageDeleteRecord[];
-
+  createdAt?: Date;
+  updatedAt?: Date;
   /** Instance methods */
   markAsDelivered(): Promise<TMessage>;
   editContent(newContent: string): Promise<TMessage>;
@@ -102,10 +110,7 @@ export interface MessageModel extends Model<TMessage> {
   /**
    * Count unread messages in a conversation for a user
    */
-  getUnreadCount(
-    conversationId: string,
-    userId: string
-  ): Promise<number>;
+  getUnreadCount(conversationId: string, userId: string): Promise<number>;
 
   /**
    * Count total messages in a conversation

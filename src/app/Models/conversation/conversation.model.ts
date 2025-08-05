@@ -287,14 +287,6 @@ conversationSchema.pre("save", function (next) {
 
 // Static methods
 
-// Find conversations with exactly the specified participants
-conversationSchema.statics.findByParticipants = function (userIds: string[]) {
-  return this.find({
-    "participants.user_id": { $all: userIds },
-    $expr: { $eq: [{ $size: "$participants" }, userIds.length] },
-  });
-};
-
 // Check if a DM conversation already exists between two specific users
 conversationSchema.statics.findDMBetweenUsers = function (
   userId1: string | any,
@@ -307,67 +299,8 @@ conversationSchema.statics.findDMBetweenUsers = function (
   });
 };
 
-// Find conversations initiated by a specific user
-conversationSchema.statics.findConversationsInitiatedBy = function (
-  userId: string
-) {
-  return this.find({
-    initiated_by: userId,
-  })
-    .populate("participants.user_id", "name email uid")
-    .populate("initiated_by", "name email uid")
-    .populate({
-      path: "last_message",
-      populate: {
-        path: "sender",
-        select: "name email uid",
-      },
-    })
-    .sort({ createdAt: -1 });
-};
-
 // Instance methods
-conversationSchema.methods.addParticipant = function (
-  userId: string,
-  conversationId: string,
-  role: "member" | "admin" = "member"
-) {
-  // check if conversation is DM
-  if (this.type === "DM") {
-    // DM conversations can only have 2 participants
-    throw new Error("DM conversations can only have 2 participants");
-  }
-
-  const isAlreadyParticipant = this.participants.some(
-    (p: any) => p.user_id.toString() === userId
-  );
-
-  if (!isAlreadyParticipant) {
-    this.participants.push({
-      user_id: userId,
-      role: role,
-      status: "active",
-      joinedAt: new Date(),
-    });
-  }
-
-  return this.save();
-};
-
-conversationSchema.methods.removeParticipant = function (userId: string) {
-  this.participants = this.participants.filter(
-    (p: any) => p.user_id.toString() !== userId
-  );
-
-  return this.save();
-};
-
-conversationSchema.methods.updateLastMessage = function (messageId: string) {
-  this.last_message = messageId;
-  // Use validateModifiedOnly to avoid re-validating required fields that weren't changed
-  return this.save({ validateModifiedOnly: true });
-};
-
+// Check if user is in the conversation
 conversationSchema.methods.isParticipant = function (userId: string) {
   return this.participants.some((p: any) => {
     // Handle both populated and non-populated cases
@@ -377,14 +310,10 @@ conversationSchema.methods.isParticipant = function (userId: string) {
   });
 };
 
-conversationSchema.methods.getParticipantRole = function (userId: string) {
-  const participant = this.participants.find((p: any) => {
-    // Handle both populated and non-populated cases
-    const participantId =
-      typeof p.user_id === "object" ? p.user_id._id : p.user_id;
-    return participantId.toString() === userId.toString();
-  });
-  return participant?.role || null;
+conversationSchema.methods.updateLastMessage = function (messageId: string) {
+  this.last_message = messageId;
+  // Use validateModifiedOnly to avoid re-validating required fields that weren't changed
+  return this.save({ validateModifiedOnly: true });
 };
 
 // Methods for handling response history and status transitions
@@ -467,40 +396,12 @@ conversationSchema.methods.unblockConversation = function () {
 conversationSchema.methods.isBlocked = function () {
   return this.block_details?.is_blocked === true;
 }; // Methods for handling read receipts
-conversationSchema.methods.markAsRead = function (userId: string) {
-  const existingIndex = this.read_receipts.findIndex(
-    (rs: any) => rs.user_id.toString() === userId.toString()
-  );
-
-  if (existingIndex >= 0) {
-    // Update existing read receipt
-    this.read_receipts[existingIndex].last_read_timestamp = new Date();
-  } else {
-    // Add new read receipt
-    this.read_receipts.push({
-      user_id: userId,
-      last_read_timestamp: new Date(),
-    });
-  }
-
-  return this.save();
-};
 
 conversationSchema.methods.getLastReadTimestamp = function (userId: string) {
   const readReceipt = this.read_receipts.find(
     (rs: any) => rs.user_id.toString() === userId.toString()
   );
   return readReceipt?.last_read_timestamp || null;
-};
-
-conversationSchema.methods.hasUnreadMessages = function (userId: string) {
-  if (!this.last_message) return false;
-
-  const lastReadTimestamp = this.getLastReadTimestamp(userId);
-  if (!lastReadTimestamp) return true; // Never read
-
-  // Compare with last message timestamp (assuming last_message has createdAt)
-  return this.updatedAt > lastReadTimestamp;
 };
 
 // Create the base model

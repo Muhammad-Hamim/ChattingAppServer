@@ -96,14 +96,6 @@ export interface IGroupConversation extends IConversationBase {
 export type IConversation = IDMConversation | IGroupConversation;
 
 export interface ConversationStatic extends Model<IConversation> {
-  /** Find all conversations where given user is a participant */
-  findByParticipants(userIds: string[]): Query<IConversation[], IConversation>;
-
-  /** Find all conversations initiated by a specific user */
-  findConversationsInitiatedBy(
-    userId: string
-  ): Query<IConversation[], IConversation>;
-
   /** Get DM between two users */
   findDMBetweenUsers(
     userId1: string,
@@ -111,24 +103,7 @@ export interface ConversationStatic extends Model<IConversation> {
   ): Query<IConversation | null, IConversation>;
 }
 export interface ConversationMethods {
-  /** Add participant to conversation */
-  addParticipant(
-    userId: string,
-    conversationId: string,
-    role?: "member" | "admin"
-  ): Promise<IConversation>;
-
-  /** Remove participant from group */
-  removeParticipant(userId: string): Promise<IConversation>;
-
-  /** Update last message (called when new message is sent) */
-  updateLastMessage(messageId: string): Promise<IConversation>;
-
-  /** Check if user is in the conversation */
   isParticipant(userId: string): boolean;
-
-  /** Get role of a participant */
-  getParticipantRole(userId: string): TParticipant["role"] | null;
 
   /** Accept a pending DM request */
   acceptConversation(userId: string): Promise<IConversation>;
@@ -151,14 +126,8 @@ export interface ConversationMethods {
   /** Check if conversation is blocked */
   isBlocked(): boolean;
 
-  /** Mark a conversation as read for a user */
-  markAsRead(userId: string): Promise<IConversation>;
-
   /** Get timestamp of last read message */
   getLastReadTimestamp(userId: string): Date | null;
-
-  /** Check if a user has unread messages */
-  hasUnreadMessages(userId: string): boolean;
 }
 export type ConversationModel = Model<
   IConversation,
