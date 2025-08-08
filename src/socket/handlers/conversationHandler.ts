@@ -1,3 +1,14 @@
+/**
+ * The function `handleConversationEvents` manages socket events related to conversations, including
+ * joining and leaving conversation rooms, sending typing indicators, and auto-joining users to their
+ * conversation rooms upon connection.
+ * @param {AuthenticatedSocket} socket - The `socket` parameter is an instance of an authenticated
+ * socket, which allows communication between the server and the client using Socket.IO. It contains
+ * information about the connected user, such as their ID and name.
+ * @param _io - The `_io` parameter is an instance of `SocketIOServer` with specific event types
+ * `ClientToServerEvents` and `ServerToClientEvents`. This instance is used to handle communication
+ * between the server and clients using Socket.IO.
+ */
 import { Server as SocketIOServer } from "socket.io";
 import { ConversationService } from "../../app/Models/conversation/conversation.service";
 import Conversation from "../../app/Models/conversation/conversation.model";
@@ -94,8 +105,7 @@ export const handleConversationEvents = (
     );
     socket.to(`conversation-${data.conversationId}`).emit("typing-start", {
       conversationId: data.conversationId,
-      userId: user_id,
-      userName: socket.name,
+      uid: socket.uid,
     });
   });
 
@@ -106,7 +116,7 @@ export const handleConversationEvents = (
     );
     socket.to(`conversation-${data.conversationId}`).emit("typing-stop", {
       conversationId: data.conversationId,
-      userId: user_id,
+      uid: socket.uid,
     });
   });
 

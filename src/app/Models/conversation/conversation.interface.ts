@@ -94,7 +94,7 @@ export interface IGroupConversation extends IConversationBase {
 
 /** Unified type for all conversation types */
 export type IConversation = IDMConversation | IGroupConversation;
-
+//static methods
 export interface ConversationStatic extends Model<IConversation> {
   /** Get DM between two users */
   findDMBetweenUsers(
@@ -102,9 +102,11 @@ export interface ConversationStatic extends Model<IConversation> {
     userId2: string
   ): Query<IConversation | null, IConversation>;
 }
+
+//instance methods
 export interface ConversationMethods {
   isParticipant(userId: string): boolean;
-
+  updateLastMessage(messageId: string): Promise<IConversation>;
   /** Accept a pending DM request */
   acceptConversation(userId: string): Promise<IConversation>;
 

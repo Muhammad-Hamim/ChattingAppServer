@@ -166,6 +166,33 @@ const sendMessageService = async ({
   return message;
 };
 
+const updateMessageStatus = async ({
+  messageId,
+  status,
+  user_id,
+}: {
+  messageId: string;
+  status: "sent" | "delivered" | "read";
+  user_id: string;
+}): Promise<unknown> => {
+  const message = await Message.findById(messageId);
+  const conversation = await Conversation.findById(message?.conversation_id);
+  const isParticipant = conversation?.isParticipant(user_id);
+  if (!isParticipant) {
+    throw new AppError(
+      httpStatus.FORBIDDEN,
+      "You are not a participant in this conversation"
+    );
+  }
+  if (!message) {
+    throw new AppError(httpStatus.NOT_FOUND, "Message not found");
+  }
+
+  message.status = status;
+  await message.save();
+  return message;
+};
+
 const editMessageService = async ({
   messageId,
   userId,
@@ -329,6 +356,7 @@ const removeReactionService = async ({
 export const MessageService = {
   getConversationMessagesService,
   sendMessageService,
+  updateMessageStatus,
   editMessageService,
   deleteMessageForEveryoneService,
   deleteMessageForMeService,
