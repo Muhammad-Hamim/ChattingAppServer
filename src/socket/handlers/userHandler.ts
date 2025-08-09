@@ -3,6 +3,7 @@ import { UserService } from "../../app/Models/user/user.service";
 import { AuthenticatedSocket } from "../../types/TSocket";
 import {
   broadcastUserStatusToContacts,
+  markPendingMessagesAsDelivered,
 } from "../utils/socketHelpers";
 import {
   ClientToServerEvents,
@@ -33,6 +34,9 @@ export const handleUserEvents = (
       await UserService.updateUserStatus(user_id, "online");
 
       await broadcastUserStatusToContacts(io, user_id, "online");
+
+      // ✅ Mark pending messages as delivered when user connects
+      await markPendingMessagesAsDelivered(io, user_id);
 
       // Send welcome message
       socket.emit("welcome", {

@@ -1,3 +1,5 @@
+import { TMessage } from "../../app/Models/message/message.interface";
+
 export interface ServerToClientEvents {
   // User events
   "user-status-changed": (data: {
@@ -19,7 +21,7 @@ export interface ServerToClientEvents {
 
   // Message events
   "new-message": (data: {
-    message: Record<string, unknown>;
+    message: Partial<TMessage>;
     conversationId: string;
   }) => void;
 
@@ -35,6 +37,11 @@ export interface ServerToClientEvents {
     conversationId: string;
     deletedAt: Date;
   }) => void;
+  "message-status-update": (data: {
+    messageId: string;
+    status: "delivered" | "read";
+  }) => void;
+  "mark-message-delivered": (data: { messageId: string }) => void;
 
   "reaction-added": (data: {
     messageId: string;
@@ -87,7 +94,7 @@ export interface ClientToServerEvents {
     },
     callback?: (response: {
       success: boolean;
-      message?: string;
+      message?: Partial<TMessage>;
       error?: string;
     }) => void
   ) => void;

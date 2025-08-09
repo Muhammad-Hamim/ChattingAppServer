@@ -6,37 +6,57 @@ import {
   ClientToServerEvents,
   ServerToClientEvents,
 } from "../types/socketEvents";
+import { TMessage } from "../../app/Models/message/message.interface";
+import { Message } from "../../app/Models";
 
 export const handleMessageEvents = (
   socket: AuthenticatedSocket,
   io: SocketIOServer<ClientToServerEvents, ServerToClientEvents>
 ): void => {
-  const userId = socket._id.toString();
+  const user_id = socket._id.toString();
 
   // Send message
   socket.on("send-message", async (data, callback) => {
     try {
       const message = await MessageService.sendMessageService({
         conversationId: data.conversationId,
-        senderId: userId,
+        senderId: user_id,
         content: data.content,
         type: data?.type as never,
         caption: data?.caption,
         replyTo: data?.replyTo,
         metadata: data?.metadata as never,
       });
-
       // Emit to conversation room (excluding sender)
       socket.to(`conversation-${data.conversationId}`).emit("new-message", {
-        message: message as Record<string, unknown>,
+        message: message,
       });
 
       // Send success response to sender
-      SocketResponse.success(callback, { message });
+      SocketResponse.success(callback, { message, tempId: data.tempId });
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Error sending message:", error);
       SocketResponse.error(callback, error);
+    }
+  });
+
+  //update message status delivered
+  socket.on("message-delivered", async (data: { messageId: string }) => {
+    //update message status to delivered
+    const message = await Message.findByIdAndUpdate(
+      data.messageId,
+      { $set: { status: "delivered" } },
+      { new: true }
+    );
+    if (message) {
+      io.to(`conversation-${message.conversation_id}`).emit(
+        "message-status-update",
+        {
+          messageId: data.messageId,
+          status: "delivered",
+        }
+      );
     }
   });
 
@@ -45,7 +65,7 @@ export const handleMessageEvents = (
     try {
       const message = await MessageService.editMessageService({
         messageId: data.messageId,
-        userId,
+        userId: user_id,
         newContent: data.newContent,
       });
 
@@ -73,7 +93,7 @@ export const handleMessageEvents = (
     try {
       const message = await MessageService.deleteMessageForEveryoneService({
         messageId: data.messageId,
-        userId,
+        userId: user_id,
       });
 
       const messageObj = message as Record<string, unknown>;
@@ -101,7 +121,7 @@ export const handleMessageEvents = (
     try {
       await MessageService.deleteMessageForMeService({
         messageId: data.messageId,
-        userId,
+        userId: user_id,
       });
 
       SocketResponse.success(callback, { message: "Message deleted for you" });
@@ -117,7 +137,7 @@ export const handleMessageEvents = (
     try {
       const message = await MessageService.addReactionService({
         messageId: data.messageId,
-        userId,
+        userId: user_id,
         emoji: data.emoji,
       });
 
@@ -127,7 +147,7 @@ export const handleMessageEvents = (
       // Emit to conversation room
       io.to(`conversation-${conversationId}`).emit("reaction-added", {
         messageId: data.messageId,
-        userId,
+        userId: user_id,
         emoji: data.emoji,
         conversationId: conversationId as string,
         reactedAt: new Date(),
@@ -146,7 +166,7 @@ export const handleMessageEvents = (
     try {
       const message = await MessageService.removeReactionService({
         messageId: data.messageId,
-        userId,
+        userId: user_id,
         emoji: data.emoji,
       });
 
@@ -156,7 +176,7 @@ export const handleMessageEvents = (
       // Emit to conversation room
       io.to(`conversation-${conversationId}`).emit("reaction-removed", {
         messageId: data.messageId,
-        userId,
+        userId: user_id,
         emoji: data.emoji,
         conversationId: conversationId as string,
       });
